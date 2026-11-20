@@ -40,5 +40,3 @@ assets/ (keep the same file names) - no other change is needed.
 Photos are PAHAD's own real photos from pahadtrust.org. Prices are from
 Pahad Organics' published price list. Turmeric and Chamba Walnuts show
 "Price on WhatsApp" because no published price exists for them.
-
-NOTE (GitHub/Vercel version): Product and brand photos are loaded live from PAHAD Trust's own image server (the same source pahadtrust.org uses), so this repo contains only HTML/CSS. The fully self-contained version with local image files is in the pahad-organics-site.zip archive.
