@@ -35,6 +35,7 @@ module.exports = async (req, res) => {
   const notes = {
     customer_name: String(customer.name || ''),
     phone: String(customer.phone || ''),
+    email: String(customer.email || ''),
     address: String(customer.address || ''),
     pincode: String(customer.pincode || ''),
     items: String(body.items || ''),
