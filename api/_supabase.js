@@ -82,6 +82,57 @@ async function sbSelect(table, query = '') {
   return sbFetch(query ? `${table}?${query}` : table, { method: 'GET' });
 }
 
+/* Raw GET that PRESERVES the failure details sbFetch swallows:
+   { ok, configured, status, data, code, message }. Used where the
+   caller needs to diagnose WHY a query failed (admin health checks,
+   the orders endpoint's db_error) instead of guessing. Never throws. */
+async function sbRawSelect(table, query = '') {
+  const cfg = supabaseConfig();
+  if (!cfg) {
+    return { ok: false, configured: false, status: 0, data: null, code: '', message: '' };
+  }
+  try {
+    const resp = await fetch(`${cfg.url}/rest/v1/${table}${query ? `?${query}` : ''}`, {
+      method: 'GET',
+      headers: {
+        apikey: cfg.key,
+        Authorization: `Bearer ${cfg.key}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    const text = await resp.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = null;
+    }
+    if (resp.ok) {
+      return { ok: true, configured: true, status: resp.status, data, code: '', message: '' };
+    }
+    return {
+      ok: false,
+      configured: true,
+      status: resp.status,
+      data: null,
+      code: data && typeof data.code === 'string' ? data.code : '',
+      message: data && typeof data.message === 'string' ? data.message : '',
+    };
+  } catch {
+    return { ok: false, configured: true, status: 0, data: null, code: '', message: '' };
+  }
+}
+
+/* True when a raw query failed because the TABLE does not exist yet
+   (PostgREST: HTTP 404, code PGRST205, or a "relation ..." message) —
+   i.e. the owner has not run supabase-schema.sql. */
+function isTableMissing(raw) {
+  if (!raw || raw.ok) return false;
+  if (raw.status === 404) return true;
+  if (raw.code === 'PGRST205' || raw.code === '42P01') return true;
+  return typeof raw.message === 'string' && raw.message.toLowerCase().includes('relation');
+}
+
 async function sbUpdate(table, query, patch) {
   const out = await sbFetch(`${table}?${query}`, {
     method: 'PATCH',
@@ -207,6 +258,8 @@ module.exports = {
   sbInsert,
   sbUpsert,
   sbSelect,
+  sbRawSelect,
+  isTableMissing,
   sbUpdate,
   upsertOrder,
   signToken,

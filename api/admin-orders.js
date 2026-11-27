@@ -14,7 +14,8 @@
 const {
   isAdmin,
   isSupabaseConfigured,
-  sbSelect,
+  sbRawSelect,
+  isTableMissing,
   sbUpdate,
   sendEmail,
   parseBody,
@@ -66,6 +67,27 @@ function computeStats(rows) {
   };
 }
 
+function configuredBlock() {
+  return {
+    supabase: true,
+    resend: Boolean(process.env.RESEND_API_KEY),
+    razorpay: Boolean(
+      process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
+    ),
+  };
+}
+
+/* Short, safe explanation for a failed orders query — never the raw
+   Supabase payload, just enough for the dashboard to tell the admin
+   what to fix. */
+function dbErrorMessage(raw) {
+  if (isTableMissing(raw)) {
+    return 'Orders table not found — the database tables may not be created yet. Run supabase-schema.sql in Supabase → SQL Editor.';
+  }
+  if (!raw || !raw.status) return 'Could not reach the database. Check the Supabase keys in the hosting settings.';
+  return `Database query failed (HTTP ${raw.status}). Check the Supabase keys in the hosting settings.`;
+}
+
 async function notifyCustomer(order, status) {
   if (!order || !order.customer_email) return;
   if (!process.env.RESEND_API_KEY) return;
@@ -99,19 +121,22 @@ module.exports = async (req, res) => {
       res.status(200).json({ configured: false, orders: [] });
       return;
     }
-    const rows = await sbSelect(
+    const raw = await sbRawSelect(
       'orders',
       'select=*&order=created_at.desc&limit=500'
     );
-    const orders = Array.isArray(rows) ? rows : [];
+    if (!raw.ok) {
+      res.status(200).json({
+        configured: configuredBlock(),
+        db_error: dbErrorMessage(raw),
+        orders: [],
+        stats: computeStats([]),
+      });
+      return;
+    }
+    const orders = Array.isArray(raw.data) ? raw.data : [];
     res.status(200).json({
-      configured: {
-        supabase: true,
-        resend: Boolean(process.env.RESEND_API_KEY),
-        razorpay: Boolean(
-          process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET
-        ),
-      },
+      configured: configuredBlock(),
       orders,
       stats: computeStats(orders),
     });

@@ -9,9 +9,12 @@
 //     markup, no hints about what sits behind it. Its form POSTs to
 //     /api/admin-login and reloads this URL on success.
 //   - Valid cookie → the full dashboard as ONE self-contained HTML
-//     document (inline CSS + vanilla JS, no external assets). The HTML
-//     carries zero order data — everything is fetched client-side from
-//     the cookie-gated /api/admin-orders and /api/admin-settings.
+//     document (inline CSS + vanilla JS, no external assets), styled
+//     like a Seller-Central console: dark sidebar, dense data tables,
+//     KPI cards, and a Settings → System Health card fed by
+//     /api/admin-health so a broken setup explains itself. The HTML
+//     carries zero order data — everything is fetched client-side
+//     from the cookie-gated /api/admin-orders and /api/admin-settings.
 const { isAdmin } = require('./_supabase');
 
 const NOT_FOUND_HTML = `<!DOCTYPE html>
@@ -100,214 +103,335 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
 <meta name="robots" content="noindex, nofollow">
 <style>
   :root{
-    --green:#2B5C45; --green-deep:#1E4634; --green-soft:#EAF1EC;
-    --gold:#C49A3A; --gold-soft:#F6EDD8;
-    --cream:#FAF6EE; --panel:#FFFDF8; --ink:#22302A; --muted:#6E7D74;
-    --border:#E4DCC9; --red:#B4443C; --red-soft:#F9E9E7;
-    --shadow:0 8px 28px rgba(30,70,52,.08);
+    --sb-bg:#152A20; --sb-text:#B9C8BE; --sb-dim:#7E9384;
+    --page:#EAEDED; --card:#FFFFFF; --line:#D5D9D9; --line-soft:#E3E6E6;
+    --ink:#0F1111; --muted:#565959; --hdr:#F0F2F2;
+    --green:#2B5C45; --green-deep:#214835; --gold:#C49A3A;
+    --shadow:0 1px 2px rgba(15,17,17,.08);
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
-  body{font-family:'Outfit',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--cream);color:var(--ink);font-size:15px;line-height:1.5}
-  h1,h2,h3,.serif{font-family:'Cormorant Garamond',Georgia,'Times New Roman',serif}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:var(--page);color:var(--ink);font-size:14px;line-height:1.45}
   button{font:inherit;cursor:pointer}
   input,select,textarea{font:inherit;color:var(--ink)}
   a{color:var(--green)}
 
-  /* ---------- top bar ---------- */
-  .topbar{position:sticky;top:0;z-index:50;background:var(--panel);border-bottom:1px solid var(--border);box-shadow:0 2px 14px rgba(30,70,52,.05)}
-  .topbar-in{max-width:1180px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  .brand{display:flex;align-items:center;gap:11px;margin-right:auto}
-  .leaf-badge{width:38px;height:38px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-  .leaf-badge svg{width:21px;height:21px}
-  .brand-name{font-family:'Cormorant Garamond',Georgia,serif;font-size:1.45rem;font-weight:700;letter-spacing:.04em;color:var(--green-deep);line-height:1}
-  .brand-sub{font-size:.68rem;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-top:2px}
-  .pill{display:inline-flex;align-items:center;gap:7px;font-size:.8rem;font-weight:600;padding:6px 12px;border-radius:999px;border:1px solid var(--border);background:var(--cream)}
-  .pill .dot{width:8px;height:8px;border-radius:50%;background:#3E9B6B}
-  .pill.closed .dot{background:var(--red)}
-  .btn{border:1.5px solid var(--green);background:var(--green);color:#fff;font-weight:600;padding:8px 16px;border-radius:10px;font-size:.9rem}
-  .btn:hover{background:var(--green-deep)}
-  .btn-ghost{background:transparent;color:var(--green)}
-  .btn-ghost:hover{background:var(--green-soft);color:var(--green-deep)}
-  .btn-gold{background:var(--gold);border-color:var(--gold);color:#fff}
-  .btn-gold:hover{background:#AC8530}
-  .btn-sm{padding:6px 12px;font-size:.84rem;border-radius:8px}
+  .layout{display:flex;min-height:100vh}
+
+  /* ---------- sidebar ---------- */
+  .sidebar{width:230px;flex:0 0 230px;background:var(--sb-bg);color:var(--sb-text);position:fixed;top:0;bottom:0;left:0;display:flex;flex-direction:column;z-index:60}
+  .side-brand{display:flex;gap:11px;align-items:center;padding:18px 18px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .leaf-badge{width:38px;height:38px;border-radius:9px;background:rgba(196,154,58,.16);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .leaf-badge svg{width:22px;height:22px}
+  .sb-name{color:#fff;font-size:1.06rem;font-weight:700;letter-spacing:.02em;line-height:1.15}
+  .sb-sub{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:600;margin-top:2px}
+  .side-nav{padding:10px 0;flex:1;overflow-y:auto}
+  .nav-label{font-size:.64rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sb-dim);padding:12px 20px 5px;font-weight:700}
+  .nav-item{display:flex;align-items:center;gap:11px;width:100%;padding:10px 20px 10px 17px;background:none;border:0;border-left:3px solid transparent;color:var(--sb-text);font-size:.93rem;font-weight:500;text-align:left}
+  .nav-item svg{width:18px;height:18px;flex:0 0 auto;opacity:.85}
+  .nav-item:hover{background:rgba(255,255,255,.05);color:#fff}
+  .nav-item.active{background:rgba(255,255,255,.09);border-left-color:var(--gold);color:#fff}
+  .nav-badge{margin-left:auto;background:var(--gold);color:#20180a;font-size:.72rem;font-weight:700;border-radius:999px;padding:1px 8px;line-height:1.5}
+  .side-foot{padding:14px 18px 16px;border-top:1px solid rgba(255,255,255,.08)}
+  .store-pill{display:flex;align-items:center;gap:8px;font-size:.86rem;font-weight:600;color:#fff;margin-bottom:11px}
+  .store-pill .dot{width:9px;height:9px;border-radius:50%;background:#4CAF7D;flex:0 0 auto}
+  .store-pill.closed .dot{background:#E05B4B}
+  .store-pill .sp-sub{display:block;font-size:.72rem;color:var(--sb-dim);font-weight:500}
+  .logout-btn{width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.18);color:#fff;padding:8px;border-radius:6px;font-weight:600;font-size:.88rem}
+  .logout-btn:hover{background:rgba(255,255,255,.13)}
+
+  /* ---------- main / topbar ---------- */
+  .main{flex:1;margin-left:230px;min-width:0;display:flex;flex-direction:column}
+  .topbar{position:sticky;top:0;z-index:50;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:14px;padding:11px 24px;flex-wrap:wrap}
+  .topbar h1{font-size:1.28rem;font-weight:600;margin:0}
+  .global-search{margin-left:auto;display:flex;align-items:center;gap:8px;background:var(--hdr);border:1px solid var(--line);border-radius:6px;padding:0 11px;flex:0 1 400px}
+  .global-search svg{width:16px;height:16px;color:var(--muted);flex:0 0 auto}
+  .global-search input{border:0;background:transparent;padding:9px 0;width:100%;font-size:.92rem}
+  .global-search input:focus{outline:none}
+  .global-search:focus-within{border-color:var(--green);background:#fff;box-shadow:0 0 0 2px rgba(43,92,69,.16)}
+  .content{padding:20px 24px 56px;width:100%;max-width:1280px;margin:0 auto}
+
+  .btn{font-weight:600;font-size:.88rem;padding:8px 16px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--ink);box-shadow:var(--shadow)}
+  .btn:hover{background:#F7FAFA}
+  .btn-primary{background:var(--green);border-color:var(--green);color:#fff}
+  .btn-primary:hover{background:var(--green-deep)}
   .btn:disabled{opacity:.55;cursor:wait}
+  .icon-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:6px;border:1px solid var(--line);background:#fff;color:var(--muted);padding:0}
+  .icon-btn:hover{background:#F7FAFA;color:var(--ink)}
+  .icon-btn svg{width:16px;height:16px}
+  .icon-btn.open{color:var(--green);border-color:var(--green)}
+  .wa-btn{color:#1F7A43;border-color:#BFE3CC;background:#F0FAF3;text-decoration:none}
+  .wa-btn:hover{background:#E2F5E9;color:#14532D}
 
-  .wrap{max-width:1180px;margin:0 auto;padding:22px 20px 60px}
+  .view{display:none}
+  .view.active{display:block}
 
-  /* ---------- KPI cards ---------- */
-  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin-bottom:14px}
-  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 18px;box-shadow:var(--shadow)}
-  .kpi .k-label{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
-  .kpi .k-value{font-family:'Cormorant Garamond',Georgia,serif;font-size:2rem;font-weight:700;color:var(--green-deep);line-height:1.15;margin-top:2px}
-  .status-strip{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px}
-  .scount{font-size:.82rem;font-weight:600;padding:5px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--border);color:var(--muted)}
-  .scount b{color:var(--green-deep)}
+  /* ---------- cards & KPIs ---------- */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:18px 20px;margin-bottom:16px}
+  .card h2{font-size:1rem;font-weight:600;margin:0 0 4px}
+  .card .hint{color:var(--muted);font-size:.87rem;margin:0 0 14px}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:16px 18px}
+  .kpi .k-label{font-size:.72rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .kpi .k-value{font-size:1.8rem;font-weight:700;line-height:1.15;margin-top:4px}
+  .kpi .k-sub{font-size:.8rem;color:var(--muted);margin-top:2px}
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid-2 .card{margin-bottom:16px}
+  .attn-flex{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .attn-num{font-size:2.1rem;font-weight:700;line-height:1;color:#9A6A00}
+  .attn-num.zero{color:var(--green)}
+  .attn-text{color:var(--muted);font-size:.9rem;margin-top:4px}
+  .attn-flex .btn{margin-left:auto}
+  .bs-row{display:flex;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+  .bs-row:last-child{border-bottom:0}
+  .bs-name{width:86px;font-weight:600;font-size:.88rem;flex:0 0 auto}
+  .bs-bar{flex:1;height:8px;background:#EEF1F1;border-radius:99px;overflow:hidden}
+  .bs-fill{height:100%;border-radius:99px}
+  .bs-count{width:34px;text-align:right;font-weight:700;flex:0 0 auto}
+  .view-all{margin-top:12px}
 
-  /* ---------- tabs ---------- */
-  .tabs{display:flex;gap:4px;border-bottom:2px solid var(--border);margin-bottom:20px}
-  .tab{border:0;background:transparent;padding:10px 18px;font-weight:600;font-size:.98rem;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-2px}
-  .tab.active{color:var(--green-deep);border-bottom-color:var(--gold)}
-  .panel{display:none}
-  .panel.active{display:block}
+  /* ---------- tables ---------- */
+  .tbl-wrap{overflow-x:auto;margin:0 -20px;padding:0 20px}
+  table.tbl{width:100%;border-collapse:collapse;font-size:.9rem;min-width:780px}
+  .tbl th{background:var(--hdr);text-align:left;font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:700;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  .tbl td{padding:10px 12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+  .tbl tbody tr.ord-row:hover{background:#F7FAFA}
+  .tbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+  .tbl th.num{text-align:right}
+  .pay-id{font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:.79rem;color:#374151;word-break:break-all;max-width:170px}
+  .items-cell{max-width:250px;color:#1F2937}
+  .cust-name{font-weight:600;white-space:nowrap}
+  .cust-phone{color:var(--muted);font-size:.82rem}
+  .date-cell{white-space:nowrap;color:#374151}
+  .detail-row td{background:#FAFBFB;padding:16px 20px}
+  .detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 30px;font-size:.88rem}
+  .detail-grid .dk{display:block;color:var(--muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-bottom:2px}
+  .detail-grid .dv{word-break:break-word}
+  .status-pill{display:inline-block;border-radius:999px;padding:4px 12px;font-weight:600;font-size:.8rem;white-space:nowrap}
+  .status-select{appearance:none;-webkit-appearance:none;border:0;border-radius:999px;padding:5px 26px 5px 12px;font-weight:600;font-size:.82rem;cursor:pointer;max-width:150px;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23555' stroke-width='1.6' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 9px center}
+  .status-select:disabled{opacity:.55;cursor:wait}
+  .st-New{background-color:#FFF3CD;color:#7A5A00}
+  .st-Packed{background-color:#E8DAEF;color:#5B2C6F}
+  .st-Shipped{background-color:#D6EAF8;color:#1A5276}
+  .st-Delivered{background-color:#D5F5E3;color:#145A32}
+  .st-Cancelled{background-color:#FADBD8;color:#7B241C}
+  .row-actions{display:flex;gap:6px;align-items:center}
 
   /* ---------- orders toolbar ---------- */
-  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-  .search{flex:1 1 240px;padding:10px 14px;border:1.5px solid var(--border);border-radius:10px;background:var(--panel)}
-  .search:focus{outline:2px solid var(--green);outline-offset:1px}
-  .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-  .chip{border:1.5px solid var(--border);background:var(--panel);color:var(--muted);font-weight:600;font-size:.86rem;padding:6px 14px;border-radius:999px}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 14px;font-size:.85rem;font-weight:600;color:#333}
+  .chip:hover{background:#F7FAFA}
   .chip.active{background:var(--green);border-color:var(--green);color:#fff}
-  .chip .n{opacity:.75;font-weight:500}
+  .chip .n{opacity:.7;font-weight:500}
+  .result-count{margin-left:auto;color:var(--muted);font-size:.87rem;white-space:nowrap}
 
-  /* ---------- order cards ---------- */
-  .order{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin-bottom:12px;box-shadow:var(--shadow)}
-  .o-head{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-  .o-when{font-weight:600;color:var(--green-deep);white-space:nowrap}
-  .o-pay{font-size:.8rem;color:var(--muted);word-break:break-all}
-  .o-amount{margin-left:auto;font-family:'Cormorant Garamond',Georgia,serif;font-size:1.5rem;font-weight:700;color:var(--green-deep);white-space:nowrap}
-  .o-items{margin:8px 0 4px;font-size:.98rem}
-  .o-cust{color:var(--muted);font-size:.92rem}
-  .o-cust b{color:var(--ink)}
-  .o-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px}
-  .o-status{padding:8px 10px;border:1.5px solid var(--green);border-radius:9px;background:var(--cream);font-weight:600;color:var(--green-deep);cursor:pointer}
-  .saved{font-size:.82rem;color:#3E9B6B;font-weight:600;opacity:0;transition:opacity .25s}
-  .saved.show{opacity:1}
-  .wa-btn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;border:1.5px solid #3E9B6B;color:#2C7A52;background:#EFF7F1;font-weight:600;font-size:.86rem;padding:7px 13px;border-radius:9px}
-  .wa-btn:hover{background:#E2F1E6}
-  .details{display:none;margin-top:14px;border-top:1px dashed var(--border);padding-top:12px;font-size:.92rem}
-  .details.open{display:block}
-  .details dl{display:grid;grid-template-columns:110px 1fr;gap:5px 14px;margin:0}
-  .details dt{color:var(--muted);font-weight:600}
-  .details dd{margin:0;word-break:break-word}
-  .badge-cancelled{color:var(--red);font-weight:700}
-
-  /* ---------- generic panels / tables ---------- */
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:var(--shadow);margin-bottom:16px}
-  .card h2{margin:0 0 6px;font-size:1.5rem;color:var(--green-deep)}
-  .card .hint{color:var(--muted);font-size:.92rem;margin:0 0 16px}
-  table{width:100%;border-collapse:collapse;font-size:.94rem}
-  th{text-align:left;font-size:.72rem;letter-spacing:.13em;text-transform:uppercase;color:var(--gold);padding:10px 10px;border-bottom:2px solid var(--gold)}
-  td{padding:11px 10px;border-bottom:1px solid var(--border);vertical-align:top}
-  tr:last-child td{border-bottom:0}
-  .table-wrap{overflow-x:auto}
-  .field{margin-bottom:16px}
-  .field label{display:block;font-weight:600;font-size:.92rem;color:var(--green-deep);margin-bottom:6px}
-  .field input[type="text"],.field textarea{width:100%;padding:11px 13px;border:1.5px solid var(--border);border-radius:10px;background:var(--cream)}
-  .field input[type="text"]:focus,.field textarea:focus{outline:2px solid var(--green);outline-offset:1px}
-  .toggle-row{display:flex;gap:12px;align-items:flex-start;cursor:pointer}
-  .toggle-row input{width:20px;height:20px;margin-top:2px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
-  .conn-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
-  .conn-row:last-child{border-bottom:0}
-  .conn-name{font-weight:600}
-  .conn-state{margin-left:auto;font-size:.82rem;font-weight:700;padding:4px 11px;border-radius:999px}
-  .conn-on{background:var(--green-soft);color:var(--green-deep)}
-  .conn-off{background:var(--red-soft);color:var(--red)}
-
-  .notice{background:var(--gold-soft);border:1px solid var(--gold);border-radius:12px;padding:13px 16px;margin-bottom:16px;font-size:.95rem}
-  .error-box{background:var(--red-soft);border:1px solid var(--red);border-radius:12px;padding:13px 16px;margin-bottom:16px}
-  .empty{color:var(--muted);text-align:center;padding:34px 10px;font-size:1rem}
-  .loading{color:var(--muted);text-align:center;padding:40px 10px}
-  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:var(--green-deep);color:#fff;font-weight:600;padding:11px 20px;border-radius:999px;box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:all .3s;z-index:99}
+  /* ---------- banners / states ---------- */
+  .banner{border-radius:8px;padding:13px 16px;margin-bottom:16px;font-size:.92rem;border:1px solid}
+  .banner-warn{background:#FFF8E1;border-color:#E3C565;color:#5D4A00}
+  .banner-error{background:#FDECEA;border-color:#E5A19B;color:#6E1F18}
+  .empty{text-align:center;color:var(--muted);padding:38px 12px;font-size:.95rem}
+  .empty b{display:block;color:var(--ink);font-size:1.02rem;margin-bottom:4px}
+  .skel{background:#fff;border:1px solid var(--line);border-radius:8px;padding:18px 20px;margin-bottom:14px}
+  .skel-bar{height:14px;border-radius:4px;margin-bottom:12px;background:linear-gradient(90deg,#ECEFF1 25%,#F6F8F8 50%,#ECEFF1 75%);background-size:200% 100%;animation:shimmer 1.15s infinite}
+  .skel-bar:last-child{margin-bottom:0}
+  @keyframes shimmer{to{background-position:-200% 0}}
+  .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#232F3E;color:#fff;font-weight:600;font-size:.9rem;padding:11px 22px;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:all .3s;z-index:99}
   .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
-  @media(max-width:640px){
-    .o-amount{margin-left:0}
-    .details dl{grid-template-columns:88px 1fr}
-    .topbar-in{padding:10px 14px}
-    .wrap{padding:16px 14px 50px}
+
+  /* ---------- settings / health ---------- */
+  .field{margin-bottom:16px}
+  .field label{display:block;font-weight:600;font-size:.9rem;margin-bottom:6px}
+  .field input[type="text"]{width:100%;padding:9px 12px;border:1px solid #A6A6A6;border-radius:6px;background:#fff}
+  .field input[type="text"]:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 2px rgba(43,92,69,.16)}
+  .toggle-row{display:flex;gap:12px;align-items:flex-start;cursor:pointer;font-weight:400}
+  .toggle-row input{width:19px;height:19px;margin-top:1px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
+  .saved{font-size:.84rem;color:#2E7D32;font-weight:600;opacity:0;transition:opacity .25s;margin-left:10px}
+  .saved.show{opacity:1}
+  .health-row{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+  .health-row:last-child{border-bottom:0}
+  .h-ico{width:22px;height:22px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:.78rem;font-weight:700;color:#fff;margin-top:1px}
+  .h-ok{background:#2E7D32}
+  .h-bad{background:#C62828}
+  .h-name{font-weight:600}
+  .h-status{color:var(--muted);font-size:.87rem}
+  .health-head{display:flex;align-items:center;gap:10px}
+  .health-head .btn{margin-left:auto}
+
+  @media(max-width:900px){
+    .layout{flex-direction:column}
+    .sidebar{position:static;width:100%;flex:none}
+    .side-nav{display:flex;overflow-x:auto;padding:6px 8px;align-items:center}
+    .nav-label{display:none}
+    .nav-item{border-left:0;border-bottom:3px solid transparent;white-space:nowrap;padding:9px 13px;border-radius:6px}
+    .nav-item.active{border-bottom-color:var(--gold)}
+    .nav-badge{margin-left:6px}
+    .side-foot{display:flex;align-items:center;gap:16px;padding:10px 16px 14px}
+    .store-pill{margin:0}
+    .logout-btn{width:auto;padding:7px 18px;margin-left:auto}
+    .main{margin-left:0}
+    .grid-2{grid-template-columns:1fr}
+    .content{padding:16px 14px 48px}
+    .topbar{padding:10px 14px}
+    .global-search{flex:1 1 100%;margin-left:0;order:3}
+    .attn-flex .btn{margin-left:0}
   }
 </style>
 </head>
 <body>
-<header class="topbar">
-  <div class="topbar-in">
-    <div class="brand">
+<div class="layout">
+  <aside class="sidebar">
+    <div class="side-brand">
       <span class="leaf-badge" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#F3E9CF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4.5-1.6-7-4.8-7-9.2C5 7.4 7.6 4.6 12 3c4.4 1.6 7 4.4 7 8.8 0 4.4-2.5 7.6-7 9.2Z"/><path d="M12 21c0-5.5 0-10.5 0-15"/><path d="M12 12c-1.8-.4-3-1.4-3.8-3M12 9c1.6-.5 2.6-1.5 3.2-3"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#C49A3A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-4.5-1.6-7-4.8-7-9.2C5 7.4 7.6 4.6 12 3c4.4 1.6 7 4.4 7 8.8 0 4.4-2.5 7.6-7 9.2Z"/><path d="M12 21c0-5.5 0-10.5 0-15"/><path d="M12 12c-1.8-.4-3-1.4-3.8-3M12 9c1.6-.5 2.6-1.5 3.2-3"/></svg>
       </span>
       <span>
-        <span class="brand-name">PAHAD Admin</span>
-        <span class="brand-sub" style="display:block">Orders &amp; Store</span>
+        <span class="sb-name">PAHAD Admin</span>
+        <span class="sb-sub" style="display:block">Seller Console</span>
       </span>
     </div>
-    <span class="pill" id="storePill"><span class="dot"></span><span id="storePillText">Store …</span></span>
-    <button class="btn btn-ghost btn-sm" id="refreshBtn" type="button">Refresh</button>
-    <button class="btn btn-sm" id="logoutBtn" type="button">Logout</button>
+    <nav class="side-nav">
+      <div class="nav-label">Manage</div>
+      <button class="nav-item active" data-nav="dashboard" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>
+        Dashboard
+      </button>
+      <button class="nav-item" data-nav="orders" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5L12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5L12 12l8.5-4.5"/><path d="M12 12v9"/></svg>
+        Orders
+        <span class="nav-badge" id="navNewBadge" hidden>0</span>
+      </button>
+      <button class="nav-item" data-nav="customers" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19.2c.6-3.1 2.8-4.7 5.5-4.7s4.9 1.6 5.5 4.7"/><path d="M15.8 5.3a3.2 3.2 0 010 5.8M17.6 14.9c1.6.7 2.6 2 2.9 4.1"/></svg>
+        Customers
+      </button>
+      <button class="nav-item" data-nav="settings" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="3.1"/><path d="M12 3v2.6M12 18.4V21M3 12h2.6M18.4 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/></svg>
+        Settings
+      </button>
+    </nav>
+    <div class="side-foot">
+      <div class="store-pill" id="storePill"><span class="dot"></span><span><span id="storePillText">Store …</span><span class="sp-sub">Live website status</span></span></div>
+      <button class="logout-btn" id="logoutBtn" type="button">Logout</button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <h1 id="sectionTitle">Dashboard</h1>
+      <div class="global-search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16.6 16.6"/></svg>
+        <input id="globalSearch" type="search" placeholder="Search orders — name, phone, payment ID">
+      </div>
+      <button class="btn" id="refreshBtn" type="button">Refresh</button>
+    </header>
+
+    <div class="content">
+      <div id="alertArea"></div>
+
+      <!-- DASHBOARD -->
+      <section class="view active" id="view-dashboard">
+        <div class="kpis">
+          <div class="kpi"><div class="k-label">Today's Orders</div><div class="k-value" id="kTodayCount">—</div><div class="k-sub">Placed today (IST)</div></div>
+          <div class="kpi"><div class="k-label">Today's Revenue</div><div class="k-value" id="kTodayRevenue">—</div><div class="k-sub">Excluding cancelled</div></div>
+          <div class="kpi"><div class="k-label">Total Orders</div><div class="k-value" id="kTotalCount">—</div><div class="k-sub">All time, loaded orders</div></div>
+          <div class="kpi"><div class="k-label">Total Revenue</div><div class="k-value" id="kTotalRevenue">—</div><div class="k-sub">Excluding cancelled</div></div>
+        </div>
+        <div class="grid-2">
+          <div class="card">
+            <h2>Needs attention</h2>
+            <p class="hint">New orders waiting to be packed.</p>
+            <div id="attentionArea"><div class="skel-bar" style="width:55%"></div><div class="skel-bar" style="width:35%"></div></div>
+          </div>
+          <div class="card">
+            <h2>Orders by status</h2>
+            <p class="hint">Where every loaded order currently sits.</p>
+            <div id="byStatusArea"><div class="skel-bar" style="width:80%"></div><div class="skel-bar" style="width:65%"></div><div class="skel-bar" style="width:45%"></div></div>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Recent orders</h2>
+          <p class="hint">The latest 8 orders across all statuses.</p>
+          <div id="recentArea"><div class="skel-bar" style="width:92%"></div><div class="skel-bar" style="width:84%"></div><div class="skel-bar" style="width:76%"></div></div>
+        </div>
+      </section>
+
+      <!-- ORDERS -->
+      <section class="view" id="view-orders">
+        <div class="card">
+          <div class="toolbar" id="ordersToolbar">
+            <span id="statusChips" style="display:contents"></span>
+            <span class="result-count" id="resultCount"></span>
+            <button class="btn" id="csvBtn" type="button">Export CSV</button>
+          </div>
+          <div id="ordersArea">
+            <div class="skel-bar" style="width:94%"></div><div class="skel-bar" style="width:88%"></div><div class="skel-bar" style="width:90%"></div><div class="skel-bar" style="width:70%"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CUSTOMERS -->
+      <section class="view" id="view-customers">
+        <div class="card">
+          <h2>Customers</h2>
+          <p class="hint">Everyone who has ordered, grouped by phone number — built from the loaded orders.</p>
+          <div id="customersArea"><div class="skel-bar" style="width:90%"></div><div class="skel-bar" style="width:78%"></div></div>
+        </div>
+      </section>
+
+      <!-- SETTINGS -->
+      <section class="view" id="view-settings">
+        <div class="card">
+          <h2>Store settings</h2>
+          <p class="hint">These apply to the live website as soon as you save.</p>
+          <form id="settingsForm">
+            <div class="field">
+              <label for="announcementInput">Announcement bar text</label>
+              <input type="text" id="announcementInput" maxlength="300">
+            </div>
+            <div class="field">
+              <label class="toggle-row">
+                <input type="checkbox" id="storeOpenInput">
+                <span><b>Store open</b><br><span style="color:var(--muted)">When off, the site shows “not accepting orders” and ordering buttons are disabled.</span></span>
+              </label>
+            </div>
+            <button class="btn btn-primary" type="submit" id="settingsSaveBtn">Save settings</button>
+            <span class="saved" id="settingsSaved">Saved</span>
+          </form>
+        </div>
+        <div class="card">
+          <div class="health-head">
+            <div>
+              <h2>System health</h2>
+              <p class="hint" style="margin:0">Live checks on the pieces this store depends on. If something is red, the fix is written next to it.</p>
+            </div>
+            <button class="btn" id="healthBtn" type="button">Re-run checks</button>
+          </div>
+          <div id="healthArea" style="margin-top:8px"><div class="skel-bar" style="width:70%"></div><div class="skel-bar" style="width:55%"></div></div>
+        </div>
+      </section>
+    </div>
   </div>
-</header>
-
-<div class="wrap">
-  <div id="alertArea"></div>
-
-  <section class="kpis" id="kpis">
-    <div class="kpi"><div class="k-label">Today's orders</div><div class="k-value" id="kTodayCount">—</div></div>
-    <div class="kpi"><div class="k-label">Today's revenue</div><div class="k-value" id="kTodayRevenue">—</div></div>
-    <div class="kpi"><div class="k-label">Total orders</div><div class="k-value" id="kTotalCount">—</div></div>
-    <div class="kpi"><div class="k-label">Total revenue</div><div class="k-value" id="kTotalRevenue">—</div></div>
-  </section>
-  <div class="status-strip" id="statusStrip"></div>
-
-  <nav class="tabs">
-    <button class="tab active" data-tab="orders" type="button">Orders</button>
-    <button class="tab" data-tab="customers" type="button">Customers</button>
-    <button class="tab" data-tab="settings" type="button">Settings</button>
-  </nav>
-
-  <!-- ORDERS -->
-  <section class="panel active" id="panel-orders">
-    <div class="toolbar">
-      <input class="search" id="searchBox" type="search" placeholder="Search name, phone or payment ID…">
-      <button class="btn btn-gold btn-sm" id="csvBtn" type="button">Export CSV</button>
-    </div>
-    <div class="chips" id="statusChips"></div>
-    <div id="ordersArea"><div class="loading">Loading orders…</div></div>
-  </section>
-
-  <!-- CUSTOMERS -->
-  <section class="panel" id="panel-customers">
-    <div class="card">
-      <h2>Customers</h2>
-      <p class="hint">Everyone who has ordered, grouped by phone number — built from the loaded orders.</p>
-      <div class="table-wrap" id="customersArea"><div class="loading">Loading…</div></div>
-    </div>
-  </section>
-
-  <!-- SETTINGS -->
-  <section class="panel" id="panel-settings">
-    <div class="card">
-      <h2>Store settings</h2>
-      <p class="hint">These apply to the live website as soon as you save.</p>
-      <form id="settingsForm">
-        <div class="field">
-          <label for="announcementInput">Announcement bar text</label>
-          <input type="text" id="announcementInput" maxlength="300">
-        </div>
-        <div class="field">
-          <label class="toggle-row">
-            <input type="checkbox" id="storeOpenInput">
-            <span><b>Store open</b><br><span style="color:var(--muted)">When off, the site shows “not accepting orders” and ordering buttons are disabled.</span></span>
-          </label>
-        </div>
-        <button class="btn" type="submit" id="settingsSaveBtn">Save settings</button>
-        <span class="saved" id="settingsSaved" style="margin-left:10px">Saved</span>
-      </form>
-    </div>
-    <div class="card">
-      <h2>Connections</h2>
-      <p class="hint">Which integrations this website is wired to. Managed by the site owner in the hosting settings — this view is read-only.</p>
-      <div id="connectionsArea"><div class="loading">Loading…</div></div>
-    </div>
-  </section>
 </div>
 
 <div class="toast" id="toast"></div>
 <script>
 (function () {
   var STATUSES = ['New', 'Packed', 'Shipped', 'Delivered', 'Cancelled'];
+  var STATUS_COLORS = { New: '#D9A404', Packed: '#8E44AD', Shipped: '#2E86C1', Delivered: '#229954', Cancelled: '#C0392B' };
+  var TITLES = { dashboard: 'Dashboard', orders: 'Orders', customers: 'Customers', settings: 'Settings' };
+  var HEALTH_LABELS = [
+    ['admin_password_set', 'Admin password'],
+    ['supabase_configured', 'Supabase connection'],
+    ['orders_table', 'Orders table'],
+    ['settings_table', 'Settings table'],
+    ['razorpay_configured', 'Razorpay (payments)'],
+    ['resend_configured', 'Resend (order emails)'],
+    ['webhook_secret_set', 'Razorpay webhook secret']
+  ];
   var state = {
-    orders: [], stats: null, connections: null, configured: true,
-    settings: null, filter: 'All', query: '', expanded: {}
+    orders: [], stats: null, configured: true, dbError: '',
+    settings: null, filter: 'All', query: '', expanded: {},
+    view: 'dashboard', healthLoaded: false
   };
 
   function $(id) { return document.getElementById(id); }
@@ -334,6 +458,10 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     if (isNaN(d.getTime())) return '';
     return d.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
   }
+  function trunc(s, n) {
+    s = String(s == null ? '' : s);
+    return s.length > n ? s.slice(0, n - 1) + '…' : s;
+  }
   var toastTimer = null;
   function toast(msg) {
     var t = $('toast');
@@ -351,85 +479,174 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       (o.items || '') + '): it is now ' + (o.status || '') + '. Payment ID: ' + (o.payment_id || '') + '. Dhanyavaad!';
     return 'https://wa.me/' + digits + '?text=' + encodeURIComponent(msg);
   }
+  function statusClass(s) { return 'st-' + s; }
+  function statusCounts() {
+    var counts = { All: state.orders.length };
+    STATUSES.forEach(function (s) { counts[s] = 0; });
+    state.orders.forEach(function (o) { if (counts[o.status] !== undefined) counts[o.status] += 1; });
+    if (state.stats && state.stats.by_status) {
+      STATUSES.forEach(function (s) {
+        if (typeof state.stats.by_status[s] === 'number') counts[s] = state.stats.by_status[s];
+      });
+      counts.All = state.stats.total_count;
+    }
+    return counts;
+  }
+
+  /* ------------------------------ views ------------------------------ */
+  function setView(name) {
+    state.view = name;
+    var items = document.querySelectorAll('.nav-item');
+    for (var i = 0; i < items.length; i++) {
+      items[i].className = 'nav-item' + (items[i].getAttribute('data-nav') === name ? ' active' : '');
+    }
+    var views = document.querySelectorAll('.view');
+    for (var j = 0; j < views.length; j++) {
+      views[j].className = 'view' + (views[j].id === 'view-' + name ? ' active' : '');
+    }
+    $('sectionTitle').textContent = TITLES[name] || 'Dashboard';
+    if (name === 'settings' && !state.healthLoaded) loadHealth();
+    window.scrollTo(0, 0);
+  }
 
   /* ------------------------------ loading ------------------------------ */
-  function loadAll() {
-    $('ordersArea').innerHTML = '<div class="loading">Loading orders…</div>';
-    var p1 = fetch('/api/admin-orders').then(function (r) {
+  function applyOrdersData(data) {
+    if (!data || data.configured === false) {
+      state.configured = false;
+      state.dbError = '';
+      state.orders = []; state.stats = null;
+      return;
+    }
+    state.configured = true;
+    state.dbError = typeof data.db_error === 'string' ? data.db_error : '';
+    state.orders = Array.isArray(data.orders) ? data.orders : [];
+    state.stats = data.stats || null;
+  }
+  function fetchOrders() {
+    return fetch('/api/admin-orders').then(function (r) {
       if (r.status === 401) { window.location.reload(); throw new Error('auth'); }
       return r.json();
     });
+  }
+  function loadAll() {
+    var p1 = fetchOrders();
     var p2 = fetch('/api/admin-settings').then(function (r) {
       return r.ok ? r.json() : null;
     }).catch(function () { return null; });
     return Promise.all([p1, p2]).then(function (res) {
-      var data = res[0] || {};
-      if (data.configured === false) {
-        state.configured = false;
-        state.orders = []; state.stats = null; state.connections = null;
-      } else {
-        state.configured = true;
-        state.orders = Array.isArray(data.orders) ? data.orders : [];
-        state.stats = data.stats || null;
-        state.connections = (data.configured && typeof data.configured === 'object') ? data.configured : null;
-      }
-      if (res[1] && res[1].settings) state.settings = res[1].settings;
+      applyOrdersData(res[0]);
+      if (res[1] && res[1].settings) { state.settings = res[1].settings; applySettings(); }
       renderAll();
     }).catch(function (err) {
       if (err && err.message === 'auth') return;
-      $('alertArea').innerHTML = '<div class="error-box">Could not load the dashboard data. Check your connection and refresh.</div>';
-      $('ordersArea').innerHTML = '<div class="empty">Nothing to show right now.</div>';
+      $('alertArea').innerHTML = '<div class="banner banner-error"><b>Could not load the dashboard data.</b> Check your connection and refresh.</div>';
     });
   }
-  function quietRefreshStats() {
-    fetch('/api/admin-orders').then(function (r) { return r.ok ? r.json() : null; }).then(function (data) {
-      if (!data || data.configured === false) return;
-      state.orders = Array.isArray(data.orders) ? data.orders : state.orders;
-      state.stats = data.stats || state.stats;
-      state.connections = (data.configured && typeof data.configured === 'object') ? data.configured : state.connections;
-      renderKpis(); renderStrip(); renderChips(); renderCustomers(); renderConnections();
+  function refreshData() {
+    fetchOrders().then(function (data) {
+      applyOrdersData(data);
+      renderAll();
     }).catch(function () { /* keep current UI */ });
+  }
+  function loadHealth() {
+    state.healthLoaded = true;
+    $('healthArea').innerHTML = '<div class="skel-bar" style="width:70%"></div><div class="skel-bar" style="width:55%"></div><div class="skel-bar" style="width:62%"></div>';
+    fetch('/api/admin-health').then(function (r) {
+      if (r.status === 401) { window.location.reload(); throw new Error('auth'); }
+      return r.json();
+    }).then(function (data) {
+      renderHealth(data && data.checks ? data.checks : null);
+    }).catch(function (err) {
+      if (err && err.message === 'auth') return;
+      $('healthArea').innerHTML = '<p class="hint" style="margin:0">Could not run the health checks. Refresh and try again.</p>';
+    });
+  }
+  function renderHealth(checks) {
+    if (!checks) {
+      $('healthArea').innerHTML = '<p class="hint" style="margin:0">Health checks are unavailable right now.</p>';
+      return;
+    }
+    var html = '';
+    HEALTH_LABELS.forEach(function (pair) {
+      var c = checks[pair[0]] || { ok: false, status: 'Unknown' };
+      html += '<div class="health-row"><span class="h-ico ' + (c.ok ? 'h-ok' : 'h-bad') + '">' + (c.ok ? '✓' : '✕') + '</span>' +
+        '<div><div class="h-name">' + esc(pair[1]) + '</div><div class="h-status">' + esc(c.status || '') + '</div></div></div>';
+    });
+    $('healthArea').innerHTML = html;
   }
 
   /* ------------------------------ rendering ------------------------------ */
   function renderAll() {
-    renderAlert(); renderKpis(); renderStrip(); renderChips();
-    renderOrders(); renderCustomers(); renderSettings(); renderConnections();
+    renderAlert(); renderDashboard(); renderOrders(); renderCustomers(); renderStorePill();
   }
   function renderAlert() {
-    $('alertArea').innerHTML = state.configured ? '' :
-      '<div class="notice"><b>Database not connected yet.</b> The dashboard switches fully on when the site owner adds the database keys in the hosting settings. Until then, orders still appear in the Razorpay dashboard.</div>';
+    var html = '';
+    if (state.dbError) {
+      html = '<div class="banner banner-error"><b>Database problem:</b> ' + esc(state.dbError) + '</div>';
+    } else if (!state.configured) {
+      html = '<div class="banner banner-warn"><b>Database not connected yet.</b> The dashboard switches fully on when the site owner adds the database keys in the hosting settings. Until then, orders still appear in the Razorpay dashboard. See Settings → System health for exactly what is missing.</div>';
+    }
+    $('alertArea').innerHTML = html;
   }
-  function renderKpis() {
+  function renderDashboard() {
     var s = state.stats;
     $('kTodayCount').textContent = s ? String(s.today_count) : '—';
     $('kTodayRevenue').textContent = s ? inr(s.today_revenue) : '—';
     $('kTotalCount').textContent = s ? String(s.total_count) : '—';
     $('kTotalRevenue').textContent = s ? inr(s.total_revenue) : '—';
-  }
-  function statusCounts() {
-    var counts = { All: state.orders.length };
-    STATUSES.forEach(function (s) { counts[s] = 0; });
-    state.orders.forEach(function (o) { if (counts[o.status] !== undefined) counts[o.status] += 1; });
-    return counts;
-  }
-  function renderStrip() {
+
     var counts = statusCounts();
-    var html = '';
-    STATUSES.forEach(function (s) {
-      html += '<span class="scount">' + s + ' <b>' + counts[s] + '</b></span>';
+    var badge = $('navNewBadge');
+    if (counts.New > 0) { badge.hidden = false; badge.textContent = String(counts.New); }
+    else { badge.hidden = true; }
+
+    /* needs attention */
+    var att = $('attentionArea');
+    if (!state.configured) {
+      att.innerHTML = '<div class="attn-text">Connect the database to see orders that need attention.</div>';
+    } else if (state.dbError) {
+      att.innerHTML = '<div class="attn-text">Orders are unavailable — see the database warning above.</div>';
+    } else if (counts.New > 0) {
+      att.innerHTML = '<div class="attn-flex"><div><div class="attn-num">' + counts.New + '</div>' +
+        '<div class="attn-text">' + (counts.New === 1 ? 'new order is' : 'new orders are') + ' waiting to be packed</div></div>' +
+        '<button class="btn btn-primary" type="button" id="attnBtn">Review new orders</button></div>';
+    } else {
+      att.innerHTML = '<div class="attn-flex"><div><div class="attn-num zero">0</div>' +
+        '<div class="attn-text">All caught up — no new orders waiting.</div></div></div>';
+    }
+
+    /* orders by status */
+    var max = 1;
+    STATUSES.forEach(function (st) { if (counts[st] > max) max = counts[st]; });
+    var bs = '';
+    STATUSES.forEach(function (st) {
+      var pct = Math.round((counts[st] / max) * 100);
+      bs += '<div class="bs-row"><span class="bs-name">' + st + '</span>' +
+        '<span class="bs-bar"><span class="bs-fill" style="display:block;width:' + pct + '%;background:' + STATUS_COLORS[st] + '"></span></span>' +
+        '<span class="bs-count">' + counts[st] + '</span></div>';
     });
-    $('statusStrip').innerHTML = html;
-  }
-  function renderChips() {
-    var counts = statusCounts();
-    var names = ['All'].concat(STATUSES);
-    var html = '';
-    names.forEach(function (n) {
-      html += '<button type="button" class="chip' + (state.filter === n ? ' active' : '') + '" data-chip="' + n + '">' +
-        n + ' <span class="n">' + counts[n] + '</span></button>';
-    });
-    $('statusChips').innerHTML = html;
+    $('byStatusArea').innerHTML = bs;
+
+    /* recent orders */
+    var rec = $('recentArea');
+    if (!state.configured) {
+      rec.innerHTML = '<div class="empty">Connect the database to see recent orders.</div>';
+    } else if (state.dbError) {
+      rec.innerHTML = '<div class="empty">Orders are unavailable — see the database warning above.</div>';
+    } else if (!state.orders.length) {
+      rec.innerHTML = '<div class="empty"><b>No orders yet</b>The first paid order will land here automatically.</div>';
+    } else {
+      var rows = state.orders.slice(0, 8).map(function (o) {
+        return '<tr><td class="date-cell">' + esc(fmtDT(o.created_at)) + '</td>' +
+          '<td><span class="cust-name">' + esc(o.customer_name || '—') + '</span></td>' +
+          '<td class="items-cell">' + esc(trunc(o.items || '', 60)) + '</td>' +
+          '<td class="num">' + esc(inr(o.amount)) + '</td>' +
+          '<td><span class="status-pill ' + statusClass(o.status) + '">' + esc(o.status || '') + '</span></td></tr>';
+      }).join('');
+      rec.innerHTML = '<div class="tbl-wrap"><table class="tbl" style="min-width:640px"><thead><tr><th>Date</th><th>Customer</th><th>Items</th><th class="num">Amount</th><th>Status</th></tr></thead><tbody>' +
+        rows + '</tbody></table></div>' +
+        '<div class="view-all"><button class="btn" type="button" id="viewAllBtn">View all orders</button></div>';
+    }
   }
   function visibleOrders() {
     var q = state.query.trim().toLowerCase();
@@ -440,56 +657,89 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       return hay.indexOf(q) !== -1;
     });
   }
-  function orderCard(o) {
-    var sel = '<select class="o-status" data-status-for="' + esc(o.payment_id) + '">';
+  function renderChips() {
+    var counts = statusCounts();
+    var names = ['All'].concat(STATUSES);
+    $('statusChips').innerHTML = names.map(function (n) {
+      return '<button type="button" class="chip' + (state.filter === n ? ' active' : '') + '" data-chip="' + n + '">' +
+        n + ' <span class="n">' + counts[n] + '</span></button>';
+    }).join('');
+  }
+  function statusSelect(o) {
+    var sel = '<select class="status-select ' + statusClass(o.status) + '" data-status-for="' + esc(o.payment_id) + '" aria-label="Change order status">';
     STATUSES.forEach(function (s) {
       sel += '<option value="' + s + '"' + (o.status === s ? ' selected' : '') + '>' + s + '</option>';
     });
-    sel += '</select>';
+    return sel + '</select>';
+  }
+  function orderRows(o) {
     var wa = waLink(o);
-    var open = state.expanded[o.payment_id] ? ' open' : '';
-    return '<article class="order">'
-      + '<div class="o-head"><div><div class="o-when">' + esc(fmtDT(o.created_at)) + '</div>'
-      + '<div class="o-pay">' + esc(o.payment_id) + '</div></div>'
-      + '<div class="o-amount">' + esc(inr(o.amount)) + '</div></div>'
-      + '<p class="o-items">' + esc(o.items || '') + '</p>'
-      + '<p class="o-cust"><b>' + esc(o.customer_name || '—') + '</b>' + (o.customer_phone ? ' · ' + esc(o.customer_phone) : '') + '</p>'
-      + '<div class="o-actions">' + sel
-      + '<span class="saved" data-saved-for="' + esc(o.payment_id) + '">Saved</span>'
-      + '<button class="btn btn-ghost btn-sm" type="button" data-details="' + esc(o.payment_id) + '">' + (state.expanded[o.payment_id] ? 'Hide details' : 'Details') + '</button>'
-      + (wa ? '<a class="wa-btn" target="_blank" rel="noopener" href="' + esc(wa) + '">WhatsApp customer</a>' : '')
-      + '</div>'
-      + '<div class="details' + open + '"><dl>'
-      + '<dt>Address</dt><dd>' + esc(o.address || '—') + (o.pincode ? ' — ' + esc(o.pincode) : '') + '</dd>'
-      + '<dt>Email</dt><dd>' + esc(o.customer_email || '—') + '</dd>'
-      + '<dt>Phone</dt><dd>' + esc(o.customer_phone || '—') + '</dd>'
-      + '<dt>Order ID</dt><dd>' + esc(o.order_id || '—') + '</dd>'
-      + '<dt>Source</dt><dd>' + esc(o.source || '—') + '</dd>'
-      + '<dt>Placed</dt><dd>' + esc(fmtDT(o.created_at)) + '</dd>'
-      + '<dt>Updated</dt><dd>' + esc(fmtDT(o.updated_at)) + '</dd>'
-      + '</dl></div></article>';
+    var open = Boolean(state.expanded[o.payment_id]);
+    var html = '<tr class="ord-row">' +
+      '<td class="date-cell">' + esc(fmtDT(o.created_at)) + '</td>' +
+      '<td class="pay-id">' + esc(o.payment_id) + '</td>' +
+      '<td class="items-cell" title="' + esc(o.items || '') + '">' + esc(trunc(o.items || '', 70)) + '</td>' +
+      '<td><span class="cust-name">' + esc(o.customer_name || '—') + '</span>' +
+      (o.customer_phone ? '<br><span class="cust-phone">' + esc(o.customer_phone) + '</span>' : '') + '</td>' +
+      '<td class="num">' + esc(inr(o.amount)) + '</td>' +
+      '<td>' + statusSelect(o) + '</td>' +
+      '<td><span class="row-actions">' +
+      '<button class="icon-btn' + (open ? ' open' : '') + '" type="button" data-details="' + esc(o.payment_id) + '" title="Order details" aria-label="Toggle order details">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="' + (open ? 'transform:rotate(180deg)' : '') + '"><path d="M6 9l6 6 6-6"/></svg></button>' +
+      (wa ? '<a class="icon-btn wa-btn" target="_blank" rel="noopener" href="' + esc(wa) + '" title="WhatsApp customer" aria-label="WhatsApp customer">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 01-12.4 7.5L3.5 20.5l1.6-4.9A8.5 8.5 0 1121 11.5z"/></svg></a>' : '') +
+      '</span></td></tr>';
+    if (open) {
+      html += '<tr class="detail-row"><td colspan="7"><div class="detail-grid">' +
+        '<div><span class="dk">Delivery address</span><span class="dv">' + esc(o.address || '—') + (o.pincode ? ' — ' + esc(o.pincode) : '') + '</span></div>' +
+        '<div><span class="dk">Email</span><span class="dv">' + esc(o.customer_email || '—') + '</span></div>' +
+        '<div><span class="dk">Phone</span><span class="dv">' + esc(o.customer_phone || '—') + '</span></div>' +
+        '<div><span class="dk">Items</span><span class="dv">' + esc(o.items || '—') + '</span></div>' +
+        '<div><span class="dk">Razorpay order ID</span><span class="dv">' + esc(o.order_id || '—') + '</span></div>' +
+        '<div><span class="dk">Source</span><span class="dv">' + esc(o.source || '—') + '</span></div>' +
+        '<div><span class="dk">Placed</span><span class="dv">' + esc(fmtDT(o.created_at)) + '</span></div>' +
+        '<div><span class="dk">Last updated</span><span class="dv">' + esc(fmtDT(o.updated_at)) + '</span></div>' +
+        '</div></td></tr>';
+    }
+    return html;
   }
   function renderOrders() {
+    renderChips();
     var area = $('ordersArea');
+    var count = $('resultCount');
     if (!state.configured) {
-      area.innerHTML = '<div class="empty">Orders will appear here once the database is connected.</div>';
+      count.textContent = '';
+      area.innerHTML = '<div class="empty"><b>Database not connected</b>Orders will appear here once the database is connected.</div>';
+      return;
+    }
+    if (state.dbError) {
+      count.textContent = '';
+      area.innerHTML = '<div class="empty"><b>Orders unavailable</b>See the database warning above — the fix is written there.</div>';
       return;
     }
     if (!state.orders.length) {
-      area.innerHTML = '<div class="empty">No orders yet — the first paid order will land here automatically.</div>';
+      count.textContent = 'Showing 0 of 0 orders';
+      area.innerHTML = '<div class="empty"><b>No orders yet</b>The first paid order will land here automatically.</div>';
       return;
     }
     var list = visibleOrders();
+    count.textContent = 'Showing ' + list.length + ' of ' + state.orders.length + ' orders';
     if (!list.length) {
-      area.innerHTML = '<div class="empty">No orders match this search or filter.</div>';
+      area.innerHTML = '<div class="empty"><b>No matching orders</b>Try a different search or status filter.</div>';
       return;
     }
-    area.innerHTML = list.map(orderCard).join('');
+    area.innerHTML = '<div class="tbl-wrap"><table class="tbl"><thead><tr>' +
+      '<th>Date</th><th>Payment ID</th><th>Items</th><th>Customer</th><th class="num">Amount</th><th>Status</th><th>Actions</th>' +
+      '</tr></thead><tbody>' + list.map(orderRows).join('') + '</tbody></table></div>';
   }
   function renderCustomers() {
     var area = $('customersArea');
     if (!state.configured) {
       area.innerHTML = '<div class="empty">Connect the database to see customers.</div>';
+      return;
+    }
+    if (state.dbError) {
+      area.innerHTML = '<div class="empty">Customers are unavailable — see the database warning above.</div>';
       return;
     }
     var byPhone = {};
@@ -512,80 +762,74 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       return (a.last || '') < (b.last || '') ? 1 : -1;
     });
     if (!list.length) {
-      area.innerHTML = '<div class="empty">No customers yet — they will appear here after the first orders.</div>';
+      area.innerHTML = '<div class="empty"><b>No customers yet</b>They will appear here after the first orders.</div>';
       return;
     }
-    var html = '<table><thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Orders</th><th>Total spent</th><th>Last order</th></tr></thead><tbody>';
-    list.forEach(function (c) {
-      html += '<tr><td><b>' + esc(c.name || '—') + '</b></td><td>' + esc(c.phone) + '</td><td>' +
-        esc(c.email || '—') + '</td><td>' + c.count + '</td><td>' + esc(inr(c.spent)) + '</td><td>' +
+    var rows = list.map(function (c) {
+      return '<tr><td><span class="cust-name">' + esc(c.name || '—') + '</span></td><td>' + esc(c.phone) + '</td><td>' +
+        esc(c.email || '—') + '</td><td>' + c.count + '</td><td class="num">' + esc(inr(c.spent)) + '</td><td class="date-cell">' +
         esc(fmtD(c.last)) + '</td></tr>';
-    });
-    area.innerHTML = html + '</tbody></table>';
+    }).join('');
+    area.innerHTML = '<div class="tbl-wrap"><table class="tbl" style="min-width:680px"><thead><tr><th>Customer</th><th>Phone</th><th>Email</th><th>Orders</th><th class="num">Total Spent</th><th>Last Order</th></tr></thead><tbody>' +
+      rows + '</tbody></table></div>';
   }
-  function renderSettings() {
+  function renderStorePill() {
     var open = !state.settings || state.settings.store_open !== 'false';
     var pill = $('storePill');
-    pill.className = 'pill' + (open ? '' : ' closed');
+    pill.className = 'store-pill' + (open ? '' : ' closed');
     $('storePillText').textContent = open ? 'Store Open' : 'Store Closed';
+  }
+  function applySettings() {
+    renderStorePill();
     if (state.settings) {
       $('announcementInput').value = state.settings.announcement || '';
-      $('storeOpenInput').checked = open;
+      $('storeOpenInput').checked = state.settings.store_open !== 'false';
     }
-  }
-  function renderConnections() {
-    var area = $('connectionsArea');
-    if (!state.configured || !state.connections) {
-      area.innerHTML = '<p class="hint" style="margin:0">Connection status is available once the database is connected.</p>';
-      return;
-    }
-    var rows = [
-      ['Razorpay (payments)', state.connections.razorpay],
-      ['Supabase (database)', state.connections.supabase],
-      ['Resend (order emails)', state.connections.resend]
-    ];
-    area.innerHTML = rows.map(function (r) {
-      return '<div class="conn-row"><span class="conn-name">' + esc(r[0]) + '</span>' +
-        '<span class="conn-state ' + (r[1] ? 'conn-on' : 'conn-off') + '">' + (r[1] ? 'Connected' : 'Not connected') + '</span></div>';
-    }).join('');
   }
 
   /* ------------------------------ events ------------------------------ */
-  var tabs = document.querySelectorAll('.tab');
-  for (var i = 0; i < tabs.length; i++) {
-    tabs[i].addEventListener('click', function () {
-      var name = this.getAttribute('data-tab');
-      for (var j = 0; j < tabs.length; j++) tabs[j].className = 'tab' + (tabs[j] === this ? ' active' : '');
-      var panels = document.querySelectorAll('.panel');
-      for (var k = 0; k < panels.length; k++) {
-        panels[k].className = 'panel' + (panels[k].id === 'panel-' + name ? ' active' : '');
-      }
-    });
+  var navItems = document.querySelectorAll('.nav-item');
+  for (var i = 0; i < navItems.length; i++) {
+    navItems[i].addEventListener('click', function () { setView(this.getAttribute('data-nav')); });
   }
 
   document.addEventListener('click', function (e) {
-    var chip = e.target.closest ? e.target.closest('[data-chip]') : null;
+    var t = e.target;
+    var chip = t.closest ? t.closest('[data-chip]') : null;
     if (chip) {
       state.filter = chip.getAttribute('data-chip');
-      renderChips(); renderOrders();
+      renderOrders();
       return;
     }
-    var det = e.target.closest ? e.target.closest('[data-details]') : null;
+    var det = t.closest ? t.closest('[data-details]') : null;
     if (det) {
       var pid = det.getAttribute('data-details');
       state.expanded[pid] = !state.expanded[pid];
       renderOrders();
+      return;
+    }
+    if (t.closest && t.closest('#attnBtn')) {
+      state.filter = 'New';
+      setView('orders');
+      renderOrders();
+      return;
+    }
+    if (t.closest && t.closest('#viewAllBtn')) {
+      state.filter = 'All';
+      setView('orders');
+      renderOrders();
     }
   });
 
-  $('searchBox').addEventListener('input', function () {
+  $('globalSearch').addEventListener('input', function () {
     state.query = this.value;
+    if (state.view !== 'orders') setView('orders');
     renderOrders();
   });
 
   document.addEventListener('change', function (e) {
     var t = e.target;
-    if (!t || !t.classList || !t.classList.contains('o-status')) return;
+    if (!t || !t.classList || !t.classList.contains('status-select')) return;
     var pid = t.getAttribute('data-status-for');
     var status = t.value;
     t.disabled = true;
@@ -600,19 +844,14 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       t.disabled = false;
       if (data && data.ok) {
         state.orders.forEach(function (o) { if (o.payment_id === pid) o.status = status; });
-        var saved = document.querySelectorAll('.saved');
-        for (var i = 0; i < saved.length; i++) {
-          if (saved[i].getAttribute('data-saved-for') === pid) {
-            saved[i].className = 'saved show';
-            (function (el) { setTimeout(function () { el.className = 'saved'; }, 2200); })(saved[i]);
-          }
-        }
-        renderStrip(); renderChips();
+        t.className = 'status-select ' + statusClass(status);
+        renderDashboard();
+        renderChips();
         toast('Order marked ' + status);
-        quietRefreshStats();
+        refreshData();
       } else {
         toast('Could not save that change.');
-        loadAll();
+        refreshData();
       }
     }).catch(function (err) {
       t.disabled = false;
@@ -621,7 +860,11 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
     });
   });
 
-  $('refreshBtn').addEventListener('click', function () { loadAll(); });
+  $('refreshBtn').addEventListener('click', function () {
+    if (state.view === 'settings') state.healthLoaded = false;
+    loadAll();
+    if (state.view === 'settings') loadHealth();
+  });
 
   $('logoutBtn').addEventListener('click', function () {
     fetch('/api/admin-logout', { method: 'POST' }).then(function () {
@@ -672,7 +915,7 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       btn.disabled = false;
       if (data && data.ok) {
         if (data.settings) state.settings = data.settings;
-        renderSettings();
+        renderStorePill();
         var sv = $('settingsSaved');
         sv.className = 'saved show';
         setTimeout(function () { sv.className = 'saved'; }, 2200);
@@ -688,6 +931,8 @@ const DASHBOARD_HTML = `<!DOCTYPE html>
       toast('Could not save settings.');
     });
   });
+
+  $('healthBtn').addEventListener('click', function () { loadHealth(); });
 
   loadAll();
 })();
