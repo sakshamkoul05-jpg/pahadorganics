@@ -9,7 +9,13 @@
 // The order/customer details in the request body are DISPLAY-ONLY for
 // those emails; the signature check is the only trust decision.
 // Email failures are logged server-side and never change the response.
+//
+// CRM: on a verified payment the order is also saved to Supabase (when
+// SUPABASE_URL / SUPABASE_SERVICE_KEY are set) via ./_supabase — the
+// admin dashboard at /admin.html reads it from there. Same guarantee:
+// a database failure never changes the response.
 const crypto = require('crypto');
+const { upsertOrder } = require('./_supabase');
 
 async function sendOrderEmails(body, paymentId, orderId) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -129,6 +135,28 @@ module.exports = async (req, res) => {
       await sendOrderEmails(body, razorpay_payment_id, razorpay_order_id);
     } catch (err) {
       console.error('Order email error:', err);
+    }
+    // Save the order to the CRM (Supabase) when configured. The body
+    // details are the same display-only payload used for the emails;
+    // a database failure is logged and never changes the response.
+    try {
+      const customer = body.customer || {};
+      await upsertOrder({
+        payment_id: razorpay_payment_id,
+        order_id: razorpay_order_id,
+        amount: Math.round(Number(body.amount) || 0) || null,
+        currency: 'INR',
+        items: String(body.items || ''),
+        customer_name: String(customer.name || ''),
+        customer_phone: String(customer.phone || ''),
+        customer_email: String(customer.email || ''),
+        address: String(customer.address || ''),
+        pincode: String(customer.pincode || ''),
+        status: 'New',
+        source: 'verify',
+      });
+    } catch (err) {
+      console.error('Order save error:', err);
     }
   }
 
